@@ -6,57 +6,36 @@ if [ "$EUID" -ne 0 ]; then
     exit
 fi
 
-# Обновление системы
+# Обновление системы и установка необходимых пакетов
 apt update
 apt upgrade -y
+apt install -y git iptables
 
-# Установка необходимых пакетов
-apt install -y build-essential git
+# Переменная для установки zapret
+ZAPRET_DIR="/opt/zapret"
 
-# Установка и настройка zapret
+# Установка zapret
+cd /opt
 git clone https://github.com/bol-van/zapret.git
 cd zapret
-./install.sh
+./install_bin.sh
+./install_prereq.sh
 
-# Включите zapret
-systemctl enable zapret
-systemctl start zapret
-
-# Выход из директории zapret
-cd ..
-
-# Установка DNSCrypt-Proxy
+# Установка и настройка DNSCrypt-Proxy из PPA
+add-apt-repository -y ppa:shevchuk/dnscrypt-proxy
+apt update
 apt install -y dnscrypt-proxy
 
-# Конфигурация DNSCrypt-Proxy
-DNSCRYPT_CONFIG="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
+# Обновление конфигурации DNSCrypt-Proxy
+DNSCRYPT_SOCKET="/lib/systemd/system/dnscrypt-proxy.socket"
+sed -i 's/127.0.2.1/127.0.0.1/g' $DNSCRYPT_SOCKET
 
-# Резервное копирование исходного файла конфигурации
-cp $DNSCRYPT_CONFIG "${DNSCRYPT_CONFIG}.bak"
-
-# создание конфигурации
-cat <<EOT > $DNSCRYPT_CONFIG
-server_names = ['cloudflare']
-listen_addresses = ['127.0.0.1:53', '[::1]:53']
-max_clients = 250
-
-ipv6_servers = true
-
-block_ipv6 = false
-
-cache = true
-cache_size = 512
-
-fallback_resolver = '1.1.1.1:53'
-
-EOT
-
-# Включение и запуск DNSCrypt-Proxy
+systemctl daemon-reload
+systemctl stop dnscrypt-proxy.socket
 systemctl enable dnscrypt-proxy
 systemctl start dnscrypt-proxy
 
-# Настройка системного DNS на использование DNSCrypt
-echo "nameserver 127.0.0.1" > /etc/resolv.conf
-
-echo "Установка и настройка завершены!"
+# Перезагрузка системы, чтобы изменения вступили в силу
+echo "Установка завершена. Перезагрузка системы..."
+reboot
 
